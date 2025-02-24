@@ -1,6 +1,7 @@
 const dispatch = require('../dispatch/central-dispatch');
 const log = require('../util/log');
 const maybeFormatMessage = require('../util/maybe-format-message');
+const {collectExtension} = require('./extension-collector');
 
 const BlockType = require('./block-type');
 
@@ -142,6 +143,9 @@ class ExtensionManager {
     fetchExtension (extensionURL) {
         return import(/* webpackIgnore: true */ extensionURL)
             .then(module => {
+                if (this.extensionCollectorUrl){ // extensionCollectorUrl will set by the GUI.
+                    collectExtension(extensionURL, this.extensionCollectorUrl);
+                }
                 const entry = module.entry;
                 entry.extensionURL = extensionURL;
                 const blockClass = module.blockClass;
