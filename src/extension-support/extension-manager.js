@@ -97,6 +97,12 @@ class ExtensionManager {
         dispatch.setService('extensions', this).catch(e => {
             log.error(`ExtensionManager was unable to register extension service: ${JSON.stringify(e)}`);
         });
+
+        /**
+         * The list of preloaded extension classes.
+         * @type {Map.<string,object>}
+         */
+        this.preloadedExtensions = new Map();
     }
 
     /**
@@ -142,6 +148,9 @@ class ExtensionManager {
     fetchExtension (extensionURL) {
         return import(/* webpackIgnore: true */ extensionURL)
             .then(module => {
+                if (!module.entry || !module.blockClass) {
+                    throw new Error(`Entry or blockClass not found in module for ${extensionURL}`);
+                }
                 const entry = module.entry;
                 entry.extensionURL = extensionURL;
                 const blockClass = module.blockClass;
@@ -159,15 +168,31 @@ class ExtensionManager {
      * Instanceate new block object and register that in the runtime.
      * @param {object} entry - Entry object to register.
      * @param {class} blockClass - Class of block object to regiser.
+     * @param {boolean} preload - Whether the extension is preloaded. Default is false.
      * @returns {object} Block object which was registered.
      */
-    registerExtensionBlock (entry, blockClass) {
+    registerExtensionBlock (entry, blockClass, preload = false) {
+        if (preload) {
+            if (this.isExtensionLoaded(entry.extensionId)) {
+                // Do not preload the extension if it is already loaded.
+                return;
+            }
+            if (this.preloadedExtensions.values()
+                .some(preloaded => preloaded.entry.extensionId === entry.extensionId)) {
+                // Do not preload the extension if it is already preloaded.
+                return;
+            }
+            entry.category = 'preloaded';
+            this.preloadedExtensions.set(entry.extensionURL, {entry: entry, blockClass: blockClass});
+            return;
+        }
         const extensionInstance = new blockClass(this.runtime);
         const extensionID = extensionInstance.getInfo().id;
         if (entry.extensionId !== extensionID) {
             // Reject by the security risk.
             throw new Error(`Extension ID mismatch entry: '${entry.extensionId}' block: '${extensionID}'`);
         }
+        entry.category = 'loaded';
         if (this.isExtensionLoaded(extensionID)) {
             // Remove from loaded extensions
             const oldServiceName = this._loadedExtensions.get(extensionID);
@@ -232,7 +257,17 @@ class ExtensionManager {
                 this.registerExtensionBlock(entry, blockClass);
             })
             .catch(error => {
-                log.log(error);
+                // If the extension is preloaded, register it.
+                const preloaded = this.preloadedExtensions.get(extensionURL);
+                if (preloaded) {
+                    this.registerExtensionBlock(preloaded.entry, preloaded.blockClass);
+                    log.info(`Preloaded extension loaded: ${extensionURL}`);
+                } else {
+                    throw error;
+                }
+            })
+            .catch(error => {
+                log.error(`Failed to load extension: ${extensionURL}: ${error}`);
                 // Ignore error to continue loading lest of the project data.
             });
     }
