@@ -140,11 +140,23 @@ class Sprite {
         const blocksContainer = this.blocks._blocks;
         const originalBlocks = Object.keys(blocksContainer).map(key => blocksContainer[key]);
         const copiedBlocks = JSON.parse(JSON.stringify(originalBlocks));
+        
+        // Create mapping from old block IDs to new block IDs
+        const blockIdMapping = {};
+        originalBlocks.forEach((originalBlock, index) => {
+            blockIdMapping[originalBlock.id] = copiedBlocks[index].id;
+        });
+        
         newBlockIds(copiedBlocks);
+        
+        // Update the mapping after newBlockIds assigns new IDs
+        originalBlocks.forEach((originalBlock, index) => {
+            blockIdMapping[originalBlock.id] = copiedBlocks[index].id;
+        });
+        
         copiedBlocks.forEach(block => {
             newSprite.blocks.createBlock(block);
         });
-
 
         const allNames = this.runtime.targets.map(t => t.sprite.name);
         newSprite.name = StringUtil.unusedName(this.name, allNames);
@@ -164,7 +176,12 @@ class Sprite {
             return newSound;
         });
 
-        return Promise.all(assetPromises).then(() => newSprite);
+        return Promise.all(assetPromises).then(() => {
+            // After the sprite is created, we need to copy comments from the original target
+            // This will be handled in RenderedTarget.duplicate()
+            newSprite._blockIdMapping = blockIdMapping;
+            return newSprite;
+        });
     }
 
     dispose () {

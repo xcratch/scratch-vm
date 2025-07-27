@@ -3,6 +3,7 @@ const StringUtil = require('../util/string-util');
 const Cast = require('../util/cast');
 const Clone = require('../util/clone');
 const Target = require('../engine/target');
+const Comment = require('../engine/comment');
 const StageLayering = require('../engine/stage-layering');
 
 /**
@@ -994,8 +995,51 @@ class RenderedTarget extends Target {
             newTarget.rotationStyle = this.rotationStyle;
             newTarget.effects = JSON.parse(JSON.stringify(this.effects));
             newTarget.variables = this.duplicateVariables(newTarget.blocks);
+            
+            // Copy comments from the original target
+            this.duplicateComments(newTarget, newSprite._blockIdMapping);
+            
             newTarget.updateAllDrawableProperties();
             return newTarget;
+        });
+    }
+
+    /**
+     * Duplicate comments from this target to a new target, updating block ID references.
+     * @param {RenderedTarget} newTarget The target to copy comments to
+     * @param {object} blockIdMapping Mapping from old block IDs to new block IDs
+     */
+    duplicateComments (newTarget, blockIdMapping) {
+        if (!blockIdMapping) {
+            blockIdMapping = {};
+        }
+
+        // Copy each comment
+        Object.values(this.comments).forEach(originalComment => {
+            const newComment = new Comment(
+                null, // Generate new comment ID
+                originalComment.text,
+                originalComment.x,
+                originalComment.y,
+                originalComment.width,
+                originalComment.height,
+                originalComment.minimized
+            );
+
+            // If this comment is attached to a block, update the block ID reference
+            if (originalComment.blockId && blockIdMapping[originalComment.blockId]) {
+                const newBlockId = blockIdMapping[originalComment.blockId];
+                newComment.blockId = newBlockId;
+
+                // Update the block to reference the new comment
+                const newBlock = newTarget.blocks.getBlock(newBlockId);
+                if (newBlock) {
+                    newBlock.comment = newComment.id;
+                }
+            }
+
+            // Add the comment to the new target
+            newTarget.comments[newComment.id] = newComment;
         });
     }
 
