@@ -839,6 +839,13 @@ class Blocks {
             didChange =
                 block.x !== e.newCoordinate.x || block.y !== e.newCoordinate.y;
 
+            // If the block has moved, move its associated comment and all child block comments too
+            if (didChange) {
+                const deltaX = e.newCoordinate.x - block.x;
+                const deltaY = e.newCoordinate.y - block.y;
+                this._moveBlockAndChildrenComments(e.id, deltaX, deltaY);
+            }
+
             block.x = e.newCoordinate.x;
             block.y = e.newCoordinate.y;
         }
@@ -1418,6 +1425,40 @@ class Blocks {
         if (i > -1) this._scripts.splice(i, 1);
         // Update `topLevel` property on the top block.
         if (this._blocks[topBlockId]) this._blocks[topBlockId].topLevel = false;
+    }
+
+    /**
+     * Helper to move comments for a block and all its children recursively.
+     * @param {string} blockId ID of block whose comments should be moved.
+     * @param {number} deltaX The change in x position.
+     * @param {number} deltaY The change in y position.
+     */
+    _moveBlockAndChildrenComments (blockId, deltaX, deltaY) {
+        const block = this._blocks[blockId];
+        if (!block) return;
+
+        // Move this block's comment if it exists
+        if (block.comment) {
+            const target = this.runtime.getEditingTarget();
+            if (target && target.comments && target.comments[block.comment]) {
+                const comment = target.comments[block.comment];
+                comment.x += deltaX;
+                comment.y += deltaY;
+            }
+        }
+
+        // Recursively move comments for all child blocks
+        // Move comment for the next block
+        if (block.next) {
+            this._moveBlockAndChildrenComments(block.next, deltaX, deltaY);
+        }
+
+        // Move comments for all input blocks
+        for (const input in block.inputs) {
+            if (block.inputs[input].block) {
+                this._moveBlockAndChildrenComments(block.inputs[input].block, deltaX, deltaY);
+            }
+        }
     }
 }
 
