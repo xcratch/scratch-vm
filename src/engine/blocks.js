@@ -944,6 +944,14 @@ class Blocks {
             return;
         }
 
+        // Delete any comment associated with this block
+        if (block.comment) {
+            const target = this.runtime.getEditingTarget();
+            if (target && target.comments && target.comments[block.comment]) {
+                delete target.comments[block.comment];
+            }
+        }
+
         // Delete children
         if (block.next !== null) {
             this.deleteBlock(block.next);
