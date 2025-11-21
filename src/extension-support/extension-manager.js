@@ -148,11 +148,36 @@ class ExtensionManager {
     fetchExtension (extensionURL) {
         return import(/* webpackIgnore: true */ extensionURL)
             .then(module => {
-                if (!module.entry || !module.blockClass) {
-                    throw new Error(`Entry or blockClass not found in module for ${extensionURL}`);
+                if (!module.entry) {
+                    throw new Error(`Entry not found in module for ${extensionURL}`);
                 }
                 const entry = module.entry;
                 entry.extensionURL = extensionURL;
+                
+                // If entry has blockClassURL, import blockClass from that URL
+                if (entry.blockClassURL) {
+                    // If blockClassURL is relative, resolve it against extensionURL
+                    let blockClassURL = entry.blockClassURL;
+                    if (!blockClassURL.match(/^https?:\/\//)) {
+                        // Relative path - resolve against extensionURL
+                        const baseURL = new URL(extensionURL, window.location.href);
+                        blockClassURL = new URL(blockClassURL, baseURL).href;
+                    }
+                    return import(/* webpackIgnore: true */ blockClassURL)
+                        .then(blockModule => {
+                            if (!blockModule.blockClass) {
+                                throw new Error(`blockClass not found in module for ${blockClassURL}`);
+                            }
+                            const blockClass = blockModule.blockClass;
+                            blockClass.extensionURL = extensionURL;
+                            return {entry: entry, blockClass: blockClass};
+                        });
+                }
+                
+                // Otherwise, use blockClass from the same module (old format)
+                if (!module.blockClass) {
+                    throw new Error(`blockClass not found in module for ${extensionURL}`);
+                }
                 const blockClass = module.blockClass;
                 blockClass.extensionURL = extensionURL;
                 return {entry: entry, blockClass: blockClass};
@@ -177,7 +202,7 @@ class ExtensionManager {
                 // Do not preload the extension if it is already loaded.
                 return;
             }
-            if (this.preloadedExtensions.values()
+            if (Array.from(this.preloadedExtensions.values())
                 .some(preloaded => preloaded.entry.extensionId === entry.extensionId)) {
                 // Do not preload the extension if it is already preloaded.
                 return;
@@ -252,16 +277,17 @@ class ExtensionManager {
         }
 
         // To access the runtime even in outer extensions, it loaded by dynamic import() instead of extension-worker.
+        // Try to load from URL first, fallback to preloaded version if it fails (regardless of online status)
         return this.fetchExtension(extensionURL)
             .then(({entry, blockClass}) => {
                 this.registerExtensionBlock(entry, blockClass);
             })
             .catch(error => {
                 // If the extension is preloaded, register it.
-                const preloaded = this.preloadedExtensions.get(extensionURL);
-                if (preloaded) {
-                    this.registerExtensionBlock(preloaded.entry, preloaded.blockClass);
-                    log.info(`Preloaded extension loaded: ${extensionURL}`);
+                const preloadedExt = this.preloadedExtensions.get(extensionURL);
+                if (preloadedExt) {
+                    this.registerExtensionBlock(preloadedExt.entry, preloadedExt.blockClass);
+                    log.info(`Failed to load from URL, using preloaded extension: ${extensionURL}`);
                 } else {
                     throw error;
                 }
